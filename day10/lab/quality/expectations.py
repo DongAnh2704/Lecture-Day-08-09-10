@@ -112,5 +112,55 @@ def run_expectations(cleaned_rows: List[Dict[str, Any]]) -> Tuple[List[Expectati
         )
     )
 
+    # E7: không còn tiền tố "Nội dung không rõ ràng:" sau khi đã clean
+    bad_unclear = [
+        r
+        for r in cleaned_rows
+        if (r.get("chunk_text") or "").startswith("Nội dung không rõ ràng:")
+    ]
+    ok7 = len(bad_unclear) == 0
+    results.append(
+        ExpectationResult(
+            "no_unclear_content_prefix",
+            ok7,
+            "halt",
+            f"violations={len(bad_unclear)}",
+        )
+    )
+
+    # E8: không còn tiền tố "!!!" sau khi đã clean
+    bad_excl = [
+        r
+        for r in cleaned_rows
+        if (r.get("chunk_text") or "").startswith("!!!")
+    ]
+    ok8 = len(bad_excl) == 0
+    results.append(
+        ExpectationResult(
+            "no_exclamation_prefix",
+            ok8,
+            "halt",
+            f"violations={len(bad_excl)}",
+        )
+    )
+
+    # E9: cảnh báo nếu còn lặp từ như "làm việc làm việc"
+    bad_stutter = [
+        r
+        for r in cleaned_rows
+        if "làm việc làm việc" in (r.get("chunk_text") or "")
+        or "ngày ngày" in (r.get("chunk_text") or "")
+        or "tháng tháng" in (r.get("chunk_text") or "")
+    ]
+    ok9 = len(bad_stutter) == 0
+    results.append(
+        ExpectationResult(
+            "no_stuttering_words",
+            ok9,
+            "warn",
+            f"stutter_chunks={len(bad_stutter)}",
+        )
+    )
+
     halt = any(not r.passed and r.severity == "halt" for r in results)
     return results, halt

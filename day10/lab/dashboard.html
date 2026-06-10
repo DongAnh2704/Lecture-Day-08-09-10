@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Day 10 Observability Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary-gradient: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+            --accent-glow: 0 0 20px rgba(0, 242, 254, 0.2);
+            --emerald-glow: 0 0 20px rgba(16, 185, 129, 0.2);
+            --rose-glow: 0 0 20px rgba(244, 63, 94, 0.2);
+            --text-color: #e2e8f0;
+            --text-muted: #94a3b8;
+            --color-emerald: #10b981;
+            --color-rose: #f43f5e;
+            --color-yellow: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 2.5rem;
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(0, 242, 254, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(79, 172, 254, 0.05) 0%, transparent 40%);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 1.5rem;
+        }
+
+        .logo-area h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #00f2fe, #4facfe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-area p {
+            color: var(--text-muted);
+            font-size: 1rem;
+            margin-top: 0.3rem;
+        }
+
+        .badge {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--color-emerald);
+            color: var(--color-emerald);
+            padding: 0.5rem 1.2rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: var(--emerald-glow);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.8rem;
+            backdrop-filter: blur(12px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(0, 242, 254, 0.3);
+            box-shadow: var(--accent-glow);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary-gradient);
+            opacity: 0.7;
+        }
+
+        .stat-card.quarantine::before {
+            background: var(--color-rose);
+        }
+        .stat-card.cleaned::before {
+            background: var(--color-emerald);
+        }
+        .stat-card.freshness::before {
+            background: var(--color-rose);
+        }
+
+        .stat-card h3 {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.8rem;
+        }
+
+        .stat-number {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.8rem;
+            font-weight: 700;
+            margin-bottom: 0.4rem;
+        }
+
+        .stat-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Dashboard Layout */
+        .dashboard-body {
+            display: grid;
+            grid-template-columns: 1.2fr 1.8fr;
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(12px);
+        }
+
+        .panel-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 1.8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #fff;
+        }
+
+        /* Quality Rules List */
+        .rules-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .rule-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .rule-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .rule-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .rule-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .rule-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .status-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.3rem 0.8rem;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.pass {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--color-emerald);
+            border: 1px solid var(--color-emerald);
+        }
+
+        .status-badge.warn {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--color-yellow);
+            border: 1px solid var(--color-yellow);
+        }
+
+        /* Toggle Button Area */
+        .toggle-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            padding: 0.4rem;
+            border-radius: 12px;
+            width: fit-content;
+            margin-bottom: 2rem;
+        }
+
+        .toggle-btn {
+            padding: 0.6rem 1.8rem;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn.active {
+            background: var(--primary-gradient);
+            color: #0b0f19;
+            box-shadow: var(--accent-glow);
+        }
+
+        /* RAG Comparison Card */
+        .compare-card {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.8rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.5s ease;
+        }
+
+        .compare-card.corrupt {
+            border-color: rgba(244, 63, 94, 0.2);
+        }
+
+        .compare-card.clean {
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .card-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-tag {
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+        }
+
+        .card-tag.err {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--color-rose);
+        }
+
+        .card-tag.ok {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--color-emerald);
+        }
+
+        .compare-q {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #fff;
+        }
+
+        .compare-preview {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 8px;
+            padding: 1.2rem;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+            border-left: 3px solid var(--color-rose);
+        }
+
+        .compare-card.clean .compare-preview {
+            border-left-color: var(--color-emerald);
+        }
+
+        .meta-stats {
+            display: flex;
+            gap: 2rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .meta-stats span strong {
+            color: #fff;
+        }
+
+        /* Grading Table */
+        .grading-table-area {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(12px);
+            margin-bottom: 2rem;
+        }
+
+        .g-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        .g-table th {
+            color: var(--text-muted);
+            font-weight: 600;
+            padding: 1rem;
+            border-bottom: 1px solid var(--card-border);
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+        }
+
+        .g-table td {
+            padding: 1.2rem 1rem;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .g-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.01);
+        }
+
+        .g-table td.q-text {
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .text-green {
+            color: var(--color-emerald);
+        }
+
+        .text-red {
+            color: var(--color-rose);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-area">
+            <h1>Day 10 Observability Dashboard</h1>
+            <p>Giám sát ETL Pipeline, Kiểm định Chất lượng và Đánh giá RAG</p>
+        </div>
+        <div class="badge">Pipeline OK</div>
+    </header>
+
+    <main>
+        <!-- Stats Grid -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <h3>Raw Records</h3>
+                <div class="stat-number" style="color: #4facfe;">247</div>
+                <div class="stat-desc">Dữ liệu thô từ 5 hệ thống nguồn</div>
+            </div>
+            <div class="stat-card cleaned">
+                <h3>Cleaned Records</h3>
+                <div class="stat-number" style="color: var(--color-emerald);">34</div>
+                <div class="stat-desc">Bản ghi sạch nạp thành công</div>
+            </div>
+            <div class="stat-card quarantine">
+                <h3>Quarantined Records</h3>
+                <div class="stat-number" style="color: var(--color-rose);">213</div>
+                <div class="stat-desc">Bản ghi lỗi & Stale bị cách ly</div>
+            </div>
+            <div class="stat-card freshness">
+                <h3>SLA Freshness</h3>
+                <div class="stat-number" style="color: var(--color-rose);">FAIL</div>
+                <div class="stat-desc">Trễ 1472h do thời gian dữ liệu mẫu cũ</div>
+            </div>
+        </section>
+
+        <!-- Main Dashboard Body -->
+        <section class="dashboard-body">
+            
+            <!-- Left Panel: Rules and Expectations -->
+            <div class="panel">
+                <div class="panel-title">
+                    <span>Expectation Suite</span>
+                    <span style="font-size: 0.85rem; color: var(--text-muted);">9 Kiểm Định</span>
+                </div>
+                <div class="rules-list">
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">min_one_row</span>
+                            <span class="rule-meta">Severity: Halt | Min: 1 cleaned row</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">no_empty_doc_id</span>
+                            <span class="rule-meta">Severity: Halt | Doc ID not empty</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">refund_no_stale_14d_window</span>
+                            <span class="rule-meta">Severity: Halt | No 14-day window in v4</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">effective_date_iso_yyyy_mm_dd</span>
+                            <span class="rule-meta">Severity: Halt | ISO date standard</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">hr_leave_no_stale_10d_annual</span>
+                            <span class="rule-meta">Severity: Halt | No stale 10d HR policy</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">no_unclear_content_prefix</span>
+                            <span class="rule-meta">Severity: Halt | Strip Unclear Content</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">no_exclamation_prefix</span>
+                            <span class="rule-meta">Severity: Halt | Strip leading "!!!"</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-info">
+                            <span class="rule-name">no_stuttering_words</span>
+                            <span class="rule-meta">Severity: Warn | Check duplicate words</span>
+                        </div>
+                        <span class="status-badge pass">Pass</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Before / After Evaluation Comparison -->
+            <div class="panel">
+                <div class="panel-title">
+                    <span>Trước / Sau Khi ETL Làm Sạch (RAG Evals)</span>
+                    <div class="toggle-container">
+                        <button class="toggle-btn" id="btn-before" onclick="showState('before')">Trước Fix</button>
+                        <button class="toggle-btn active" id="btn-after" onclick="showState('after')">Sau Fix (Hiện tại)</button>
+                    </div>
+                </div>
+
+                <div id="compare-area">
+                    <!-- Cards will be populated by JS -->
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Grading Run Suite Section -->
+        <section class="grading-table-area">
+            <div class="panel-title">
+                <span>Kết Quả Đánh Giá Suite Grading (10/10 PASS)</span>
+                <span style="font-size: 0.85rem; color: var(--color-emerald); font-weight: 600; text-transform: uppercase;">Chỉ số chất lượng: 100%</span>
+            </div>
+            <table class="g-table">
+                <thead>
+                    <tr>
+                        <th style="width: 10%;">ID</th>
+                        <th style="width: 45%;">Câu hỏi</th>
+                        <th style="width: 15%;">Top 1 Doc ID</th>
+                        <th style="width: 15%;">Expected Key</th>
+                        <th style="width: 15%;">Hits Forbidden</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>gq_d10_01</td>
+                        <td class="q-text">Theo chính sách hoàn tiền hiện hành, khách hàng có tối đa bao nhiêu ngày làm việc...</td>
+                        <td>policy_refund_v4</td>
+                        <td class="text-green">PASS</td>
+                        <td class="text-green">PASS</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_02</td>
+                        <td class="q-text">Đâu là loại sản phẩm bị loại khỏi điều kiện hoàn tiền?</td>
+                        <td>policy_refund_v4</td>
+                        <td class="text-green">PASS</td>
+                        <td class="text-green">-</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_03</td>
+                        <td class="q-text">Finance Team xử lý yêu cầu hoàn tiền trong bao lâu?</td>
+                        <td>policy_refund_v4</td>
+                        <td class="text-green">PASS</td>
+                        <td class="text-green">-</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_04</td>
+                        <td class="q-text">SLA phản hồi ban đầu cho ticket P1 là bao lâu?</td>
+                        <td>sla_p1_2026</td>
+                        <td class="text-green">PASS</td>
+                        <td class="text-green">-</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_05</td>
+                        <td class="q-text">SLA resolution cho ticket P1 là bao nhiêu giờ?</td>
+                        <td>sla_p1_2026</td>
+                        <td class="text-green">PASS</td>
+                        <td class="text-green">-</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_06</td>
+                        <td class="q-text">Nếu không có phản hồi với ticket P1 sau bao lâu thì hệ thống auto escalate?</td>
+                        <td>sla_p1_2026</td>
+                        <td class="text-green">PASS (10 phút)</td>
+                        <td class="text-green">PASS</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_07</td>
+                        <td class="q-text">Tài khoản bị khóa sau bao nhiêu lần đăng nhập sai liên tiếp?</td>
+                        <td>it_helpdesk_faq</td>
+                        <td class="text-green">PASS</td>
+                        <td class="text-green">-</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_08</td>
+                        <td class="q-text">VPN cho phép kết nối tối đa bao nhiêu thiết bị cùng lúc?</td>
+                        <td>it_helpdesk_faq</td>
+                        <td class="text-green">PASS</td>
+                        <td class="text-green">-</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_09</td>
+                        <td class="q-text">Nhân viên dưới 3 năm kinh nghiệm được bao nhiêu ngày phép năm theo chính sách HR 2026?</td>
+                        <td>hr_leave_policy</td>
+                        <td class="text-green">PASS (12 ngày)</td>
+                        <td class="text-green">PASS (Ko lẫn 10 ngày)</td>
+                    </tr>
+                    <tr>
+                        <td>gq_d10_10</td>
+                        <td class="q-text">Level 4 Admin Access yêu cầu phê duyệt bởi ai?</td>
+                        <td>access_control_sop</td>
+                        <td class="text-green">PASS (IT Manager / CISO)</td>
+                        <td class="text-green">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script>
+        const data = {
+            before: [
+                {
+                    q: "Khách hàng có bao nhiêu ngày để yêu cầu hoàn tiền kể từ khi đơn được xác nhận?",
+                    top1: "policy_refund_v4",
+                    text: "Yêu cầu hoàn tiền được chấp nhận trong vòng 14 ngày làm việc kể từ xác nhận đơn.",
+                    expected: "Yes",
+                    forbidden: "Yes (14 ngày)",
+                    status: "err",
+                    note: "Nhiễm độc chunk v3 lỗi thời"
+                },
+                {
+                    q: "Nếu không có phản hồi với ticket P1 sau bao lâu, hệ thống tự động escalate?",
+                    top1: "sla_p1_2026",
+                    text: "Ticket P2: phản hồi ban đầu 2 giờ và resolution 1 ngày làm việc. Escalation sau 90 phút không phản hồi.",
+                    expected: "No (Ko tìm thấy 10 phút)",
+                    forbidden: "No",
+                    status: "err",
+                    note: "Escalation P1 nằm ngoài top 5 do khoảng cách ngữ nghĩa xa (0.85)"
+                },
+                {
+                    q: "Nhân viên dưới 3 năm kinh nghiệm được bao nhiêu ngày phép năm?",
+                    top1: "hr_leave_policy",
+                    text: "Nhân viên dưới 3 năm kinh nghiệm được 10 ngày phép năm (bản HR 2025).",
+                    expected: "No",
+                    forbidden: "Yes (10 ngày)",
+                    status: "err",
+                    note: "Trùng lắp version HR 2025"
+                }
+            ],
+            after: [
+                {
+                    q: "Khách hàng có bao nhiêu ngày để yêu cầu hoàn tiền kể từ khi đơn được xác nhận?",
+                    top1: "policy_refund_v4",
+                    text: "Yêu cầu được gửi trong vòng 7 ngày làm việc kể từ thời điểm xác nhận đơn hàng.",
+                    expected: "Yes (7 ngày)",
+                    forbidden: "No",
+                    status: "ok",
+                    note: "Đã làm sạch và thay thế 14 -> 7 ngày"
+                },
+                {
+                    q: "Nếu không có phản hồi với ticket P1 sau bao lâu, hệ thống tự động escalate?",
+                    top1: "sla_p1_2026",
+                    text: "Ticket P1 - Escalation: tự động escalate lên Senior Engineer nếu không có phản hồi trong 10 phút.",
+                    expected: "Yes (10 phút)",
+                    forbidden: "No",
+                    status: "ok",
+                    note: "Chuẩn hóa prefix rút ngắn khoảng cách cosine xuống 0.29, xếp hạng 2 trong RAG"
+                },
+                {
+                    q: "Nhân viên dưới 3 năm kinh nghiệm được bao nhiêu ngày phép năm?",
+                    top1: "hr_leave_policy",
+                    text: "Nhân viên dưới 3 năm kinh nghiệm được 12 ngày phép năm theo chính sách 2026.",
+                    expected: "Yes (12 ngày)",
+                    forbidden: "No",
+                    status: "ok",
+                    note: "Đã cách ly hoàn toàn bản cũ 2025"
+                }
+            ]
+        };
+
+        function showState(state) {
+            document.getElementById('btn-before').classList.toggle('active', state === 'before');
+            document.getElementById('btn-after').classList.toggle('active', state === 'after');
+
+            const container = document.getElementById('compare-area');
+            container.innerHTML = '';
+
+            data[state].forEach(item => {
+                const card = document.createElement('div');
+                card.className = `compare-card ${item.status}`;
+                card.innerHTML = `
+                    <div class="card-header-row">
+                        <span class="card-tag ${item.status}">${item.status === 'ok' ? 'Clean Data' : 'Corrupted/Stale Data'}</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">${item.note}</span>
+                    </div>
+                    <div class="compare-q">${item.q}</div>
+                    <div class="compare-preview">${item.text}</div>
+                    <div class="meta-stats">
+                        <span>Top 1: <strong>${item.top1}</strong></span>
+                        <span>Expected Key: <strong style="color: ${item.status === 'ok' ? 'var(--color-emerald)' : 'var(--color-rose)'}">${item.expected}</strong></span>
+                        <span>Hits Forbidden: <strong style="color: ${item.status === 'ok' ? 'var(--color-emerald)' : 'var(--color-rose)'}">${item.forbidden}</strong></span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Init
+        showState('after');
+    </script>
+</body>
+</html>

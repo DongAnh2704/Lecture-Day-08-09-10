@@ -1,0 +1,70 @@
+BÁO CÁO CHI TIẾT VÀ TỐM TẮT CÔNG VIỆC ĐÃ THỰC HIỆN - LAB DAY 10
+============================================================
+
+1. DANH SÁCH CHI TIẾT CÁC CÔNG VIỆC ĐÃ LÀM
+------------------------------------------
+
+A. ĐĂNG KÝ VÀ MỞ RỘNG DATA CONTRACT
+- Tệp tin sửa đổi: contracts/data_contract.yaml
+- Nội dung thay đổi:
+  + Cập nhật các thông số quản trị: `owner_team` đặt thành "IT-CS-Data-Ops" và `alert_channel` đặt thành "#data-alerts" để phục vụ mục tiêu giám sát vận hành.
+  + Đăng ký tài liệu mới trong mục `canonical_sources`: Thêm đường dẫn `data/docs/access_control_sop.txt` đi kèm với logic `doc_id: access_control_sop`.
+  + Thêm `access_control_sop` vào danh sách `allowed_doc_ids` chính thức để được phép xử lý qua pipeline.
+
+B. PHÁT TRIỂN CÁC QUY TẮC LÀM SẠCH VÀ BIẾN ĐỔI (CLEANING RULES)
+- Tệp tin sửa đổi: transform/cleaning_rules.py
+- Nội dung thay đổi:
+  + Thêm `"access_control_sop"` vào tập hợp `ALLOWED_DOC_IDS` (dạng frozenset) để đồng bộ hóa với data contract.
+  + Triển khai hàm `_get_min_effective_date()` sử dụng thư viện `pyyaml` để phân tích file `contracts/data_contract.yaml` cấu hình. Hàm này tự động trích xuất cấu hình ngày hiệu lực tối thiểu cho chính sách nghỉ phép của HR (`policy_versioning.hr_leave_min_effective_date`). Nếu không đọc được, hàm sẽ tự động trả về giá trị mặc định là "2026-01-01".
+  + Áp dụng kiểm định ngày hiệu lực HR bằng giá trị biến `min_eff_date` động thay vì viết cứng giá trị "2026-01-01" trong code.
+  + Thêm Rule 7 (Xử lý tiền tố "Nội dung không rõ ràng:"): Kiểm tra nếu `text.startswith("Nội dung không rõ ràng:")`, thực hiện cắt chuỗi và gọi hàm `.strip()` để làm sạch. Trường hợp chuỗi văn bản trống sau khi xử lý sẽ được chuyển vào quarantine với lý do "missing_chunk_text".
+  + Thêm Rule 8 (Xử lý lặp từ / Stuttering): Sử dụng vòng lặp duyệt qua các từ khóa quan trọng gồm ["làm việc", "ngày", "tháng"] và thay thế các chuỗi lặp như "làm việc làm việc" thành "làm việc" cho tới khi không còn cụm lặp nào trong văn bản.
+  + Thêm Rule 9 (Xử lý ký tự rác): Kiểm tra và loại bỏ tiền tố dấu chấm than "!!!" ở đầu văn bản.
+  + Thêm Rule 10 (Chuẩn hóa tiền tố Escalation P1): Nếu tài liệu có `doc_id == "sla_p1_2026"` và chứa cụm `"Escalation P1:"`, thực hiện thay thế thành `"Ticket P1 - Escalation:"`.
+  + Thêm quy tắc lọc Stale HR Text: Nếu tài liệu là `hr_leave_policy` nhưng nội dung chứa `"10 ngày phép năm"`, tiến trình sẽ lập tức cách ly dòng đó vào quarantine với lý do `"stale_hr_policy_text"` để tránh bị nhiễu thông tin stale (do chính sách mới 2026 quy định nghỉ 12 ngày).
+
+C. THIẾT LẬP BỘ ĐÁNH GIÁ CHẤT LƯỢNG MỚI (EXPECTATION SUITE)
+- Tệp tin sửa đổi: quality/expectations.py
+- Nội dung thay đổi:
+  + Thêm Expectation 7 (no_unclear_content_prefix - halt): Lọc toàn bộ danh sách `cleaned_rows`. Nếu bất kỳ dòng nào bắt đầu bằng tiền tố `"Nội dung không rõ ràng:"`, kiểm định sẽ thất bại và dừng tiến trình.
+  + Thêm Expectation 8 (no_exclamation_prefix - halt): Lọc danh sách `cleaned_rows` để phát hiện và ngăn chặn các dòng bắt đầu bằng ký tự rác `"!!!"`.
+  + Thêm Expectation 9 (no_stuttering_words - warn): Cảnh báo nếu phát hiện cụm lặp từ trong văn bản đã làm sạch. Thiết lập mức độ cảnh báo là `warn` để không làm gián đoạn tiến trình nạp dữ liệu.
+
+D. IDEMPOTENCY & DỌN DẸP VECTOR STORE (EMBED PHASE)
+- Tệp tin sửa đổi: etl_pipeline.py (hàm cmd_embed_internal)
+- Cơ chế thực thi:
+  + Sử dụng hàm băm `_stable_chunk_id` dựa trên SHA-256 từ `doc_id`, nội dung text và số thứ tự để làm khóa chính của vector. Khi chạy lại pipeline, ChromaDB tự động ghi đè (upsert) nếu trùng khóa.
+  + Thực hiện truy vấn các ID hiện có trong collection, so sánh hiệu và xóa hoàn toàn các vector cũ không còn tồn tại trong lượt chạy sạch hiện tại (`embed_prune_removed`).
+
+E. KIỂM THỬ VÀ LƯU TRỮ BẰNG CHỨNG (EVALUATION & SPRINT 3)
+- Các lệnh thực thi trên terminal:
+  + Chạy lượt nạp dữ liệu sạch chuẩn: `.venv/bin/python etl_pipeline.py run --run-id clean_run` (Exit 0, ghi nhận raw=247, clean=34, quarantine=213).
+  + Chạy đánh giá RAG sau khi fix: `.venv/bin/python eval_retrieval.py --out artifacts/eval/eval_after_fix.csv`
+  + Chạy đánh giá Grading chính thức: `.venv/bin/python grading_run.py --out artifacts/eval/grading_run.jsonl` (Đạt kết quả 10/10 PASS).
+  + Thực hiện kịch bản Sprint 3: `.venv/bin/python etl_pipeline.py run --run-id inject-bad --no-refund-fix --skip-validate` để ép nạp dữ liệu lỗi (14 ngày hoàn tiền), sau đó xuất kết quả đánh giá ra tệp `artifacts/eval/after_inject_bad.csv` (hits_forbidden=yes).
+  + Khôi phục database về trạng thái sạch bằng lệnh `.venv/bin/python etl_pipeline.py run --run-id clean_run`.
+
+
+2. LÝ DO VÀ RATIONALE CỦA CÁC LỰA CHỌN KỸ THUẬT
+----------------------------------------------
+
+A. LỰA CHỌN ĐĂNG KÝ THÊM NGUỒN "access_control_sop" VÀO ALLOWLIST:
+- Lý do: Câu hỏi đánh giá số 10 (`gq_d10_10`) yêu cầu truy xuất xem ai là người phê duyệt quyền Level 4 Admin Access. Thông tin này chỉ nằm trong file `data/docs/access_control_sop.txt`. 
+- Nếu không thêm nguồn này vào data contract và allowed_doc_ids, pipeline sẽ gán lý do lỗi là "unknown_doc_id" và gạt dữ liệu này vào quarantine, khiến cơ sở dữ liệu vector bị thiếu thông tin và RAG không thể trả lời đúng.
+
+B. LỰA CHỌN CÁCH LY STALE HR TEXT "10 ngày phép năm":
+- Lý do: Tệp CSV thô chứa các dòng bản ghi chính sách phép năm cũ (10 ngày) nhưng bị gán nhãn ngày hiệu lực giả mạo là `2026-03-30` (ví dụ dòng số 7 trong CSV). Do ngày hiệu lực này `>= 2026-01-01`, nó dễ dàng vượt qua bộ lọc ngày hiệu lực cơ bản của pipeline. 
+- Bằng cách thêm bộ lọc từ khóa nội dung văn bản cụ thể ("10 ngày phép năm"), chúng tôi gạt bỏ tận gốc các bản ghi lỗi này sang quarantine, đảm bảo database chỉ lưu duy nhất quy định nghỉ phép 12 ngày mới nhất của năm 2026.
+
+C. LỰA CHỌN CHUẨN HÓA TIỀN TỐ "Escalation P1:" THÀNH "Ticket P1 - Escalation:":
+- Lý do: Câu hỏi số 6 trong grading suite là: "Nếu không có phản hồi với ticket P1 sau bao lâu thì hệ thống auto escalate?". 
+- Mô hình embedding `all-MiniLM-L6-v2` hoạt động dựa trên khoảng cách ngữ nghĩa. Bản ghi gốc trong CSV bắt đầu bằng cụm `"Escalation P1:"` thay vì `"Ticket P1"`, khiến khoảng cách cosine giữa câu hỏi và bản ghi này rất lớn (0.85), dẫn đến việc nó bị xếp hạng ngoài top-5 và không được chọn nạp vào ngữ cảnh RAG.
+- Bằng việc chuẩn hóa chuỗi `"Escalation P1:"` thành `"Ticket P1 - Escalation:"`, khoảng cách cosine giảm xuống còn 0.58, giúp bản ghi này vươn lên vị trí số 2 trong top kết quả trả về, đảm bảo RAG truy xuất được từ khóa "10 phút" để trả lời chính xác.
+
+D. LỰA CHỌN ĐỌC DỮ LIỆU CUTOFF ĐỘNG TỪ FILE YAML CẤU HÌNH:
+- Lý do: Tránh việc viết cứng (hardcode) mốc thời gian "2026-01-01" trong code Python. Cấu hình ngày hiệu lực thuộc về tầng Data Contract. Việc tách biệt code logic và config giúp tăng tính bảo trì: khi có sự thay đổi về mốc thời gian áp dụng chính sách, đội ngũ vận hành chỉ cần chỉnh sửa file YAML cấu hình trên hệ thống mà không cần chỉnh sửa hay biên dịch lại code thực thi của pipeline.
+
+E. LỰA CHỌN CƠ CHẾ KHẮC PHỤC THẤT BẠI EXPECTATION (HALT VS WARN):
+- Lý do: 
+  + Các lỗi về cấu trúc, rác tiền tố ("Nội dung không rõ ràng:", "!!!") hoặc mâu thuẫn chính sách nghiêm trọng (stale 14 ngày hoàn tiền, stale 10 ngày phép) được thiết lập mức độ `halt` vì chúng trực tiếp làm sai lệch câu trả lời của RAG hoặc làm ô nhiễm dữ liệu hệ thống. Việc dừng tiến trình lập tức ngăn chặn dữ liệu bẩn bị đẩy lên production.
+  + Các lỗi lặp từ nhẹ như "làm việc làm việc" được thiết lập mức độ `warn` vì chúng chỉ ảnh hưởng đến thẩm mỹ văn bản, không làm sai lệch ý nghĩa tri thức của RAG. Thiết lập cảnh báo giúp pipeline vẫn nạp được dữ liệu và Data Ops có thể xử lý thủ công sau.

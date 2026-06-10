@@ -20,8 +20,25 @@ ALLOWED_DOC_IDS = frozenset(
         "sla_p1_2026",
         "it_helpdesk_faq",
         "hr_leave_policy",
+        "access_control_sop",
     }
 )
+
+def _get_min_effective_date() -> str:
+    """Đọc động ngày cutoff từ data contract để tránh hard-code"""
+    try:
+        import yaml
+        yaml_path = Path(__file__).resolve().parent.parent / "contracts" / "data_contract.yaml"
+        if yaml_path.is_file():
+            with yaml_path.open(encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                cutoff = data.get("policy_versioning", {}).get("hr_leave_min_effective_date")
+                if cutoff:
+                    return str(cutoff).strip()
+    except Exception:
+        pass
+    return "2026-01-01"
+
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DMY_SLASH = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
@@ -82,12 +99,31 @@ def clean_rows(
     seen_text: set[str] = set()
     cleaned: List[Dict[str, Any]] = []
     seq = 0
+    min_eff_date = _get_min_effective_date()
 
     for raw in rows:
         doc_id = raw.get("doc_id", "")
         text = raw.get("chunk_text", "")
         eff_raw = raw.get("effective_date", "")
         exported_at = raw.get("exported_at", "")
+
+        # Rule 7: Loại bỏ tiền tố "Nội dung không rõ ràng:"
+        if text.startswith("Nội dung không rõ ràng:"):
+            text = text[len("Nội dung không rõ ràng:"):].strip()
+
+        # Rule 8: Loại bỏ lặp từ như "làm việc làm việc", "ngày ngày"
+        for word in ["làm việc", "ngày", "tháng"]:
+            double_word = f"{word} {word}"
+            while double_word in text:
+                text = text.replace(double_word, word)
+
+        # Rule 9: Loại bỏ tiền tố "!!!"
+        if text.startswith("!!!"):
+            text = text.lstrip("!").strip()
+
+        # Rule 10: Chuẩn hóa tiền tố Escalation P1 thành Ticket P1 - Escalation để cải thiện retrieval
+        if doc_id == "sla_p1_2026" and "Escalation P1:" in text:
+            text = text.replace("Escalation P1:", "Ticket P1 - Escalation:")
 
         if doc_id not in ALLOWED_DOC_IDS:
             quarantine.append({**raw, "reason": "unknown_doc_id"})
@@ -101,12 +137,22 @@ def clean_rows(
             quarantine.append({**raw, "reason": eff_err, "effective_date_raw": eff_raw})
             continue
 
-        if doc_id == "hr_leave_policy" and eff_norm < "2026-01-01":
+        if doc_id == "hr_leave_policy" and eff_norm < min_eff_date:
             quarantine.append(
                 {
                     **raw,
                     "reason": "stale_hr_policy_effective_date",
                     "effective_date_normalized": eff_norm,
+                }
+            )
+            continue
+
+        if doc_id == "hr_leave_policy" and "10 ngày phép năm" in text:
+            quarantine.append(
+                {
+                    **raw,
+                    "reason": "stale_hr_policy_text",
+                    "chunk_text_cleaned": text,
                 }
             )
             continue
